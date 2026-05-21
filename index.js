@@ -10,10 +10,24 @@ app.use(cors());
 app.use(express.json());
 
 const { Pool } = pg;
+
+// Configuração de conexão otimizada para Neon e Vercel
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
-    rejectUnauthorized: false
+    rejectUnauthorized: false // Necessário para o Neon
+  },
+  max: 10, // Limite de conexões
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000,
+});
+
+// Teste de conexão ao iniciar
+pool.query('SELECT NOW()', (err, res) => {
+  if (err) {
+    console.error('ERRO DE CONEXÃO COM O BANCO:', err.message);
+  } else {
+    console.log('CONECTADO AO NEON COM SUCESSO EM:', res.rows[0].now);
   }
 });
 
@@ -22,7 +36,7 @@ app.post('/sync', async (req, res) => {
   const { user_key, numbers } = req.body;
 
   if (!user_key || !Array.isArray(numbers)) {
-    return res.status(400).json({ error: 'Dados inválidos' });
+    return res.status(400).json({ error: 'Dados inválidos: user_key ou numbers ausentes' });
   }
 
   try {
@@ -38,8 +52,8 @@ app.post('/sync', async (req, res) => {
     const result = await pool.query(query, [user_key, JSON.stringify(numbers)]);
     res.json({ success: true, data: result.rows[0] });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Erro no servidor' });
+    console.error('ERRO NO SYNC:', err.message);
+    res.status(500).json({ error: 'Erro no banco de dados', details: err.message });
   }
 });
 
@@ -54,9 +68,14 @@ app.get('/data/:user_key', async (req, res) => {
     }
     res.json({ numbers: result.rows[0].numbers });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Erro no servidor' });
+    console.error('ERRO NO GET DATA:', err.message);
+    res.status(500).json({ error: 'Erro no banco de dados', details: err.message });
   }
+});
+
+// Rota de saúde para teste rápido
+app.get('/', (req, res) => {
+  res.send('Backend Padrão FIFA está Online!');
 });
 
 const PORT = process.env.PORT || 3000;
