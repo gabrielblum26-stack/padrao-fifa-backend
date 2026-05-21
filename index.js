@@ -6,37 +6,30 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const app = express();
-app.use(cors());
+
+// CORS ultra-permissivo para garantir que a extensão consiga conectar
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(express.json());
 
 const { Pool } = pg;
-
-// Configuração de conexão otimizada para Neon e Vercel
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false // Necessário para o Neon
-  },
-  max: 10, // Limite de conexões
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
-});
-
-// Teste de conexão ao iniciar
-pool.query('SELECT NOW()', (err, res) => {
-  if (err) {
-    console.error('ERRO DE CONEXÃO COM O BANCO:', err.message);
-  } else {
-    console.log('CONECTADO AO NEON COM SUCESSO EM:', res.rows[0].now);
-  }
+  ssl: { rejectUnauthorized: false }
 });
 
 // Endpoint para salvar/atualizar números
 app.post('/sync', async (req, res) => {
+  console.log('REQUISIÇÃO RECEBIDA NO SYNC:', req.body);
   const { user_key, numbers } = req.body;
 
   if (!user_key || !Array.isArray(numbers)) {
-    return res.status(400).json({ error: 'Dados inválidos: user_key ou numbers ausentes' });
+    console.error('DADOS INVÁLIDOS:', req.body);
+    return res.status(400).json({ error: 'Dados inválidos' });
   }
 
   try {
@@ -50,35 +43,25 @@ app.post('/sync', async (req, res) => {
       RETURNING *;
     `;
     const result = await pool.query(query, [user_key, JSON.stringify(numbers)]);
+    console.log('GRAVADO COM SUCESSO:', user_key);
     res.json({ success: true, data: result.rows[0] });
   } catch (err) {
-    console.error('ERRO NO SYNC:', err.message);
-    res.status(500).json({ error: 'Erro no banco de dados', details: err.message });
+    console.error('ERRO NO BANCO:', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
-// Endpoint para buscar números atuais
 app.get('/data/:user_key', async (req, res) => {
   const { user_key } = req.params;
-
   try {
     const result = await pool.query('SELECT numbers FROM roulette_data WHERE user_key = $1', [user_key]);
-    if (result.rows.length === 0) {
-      return res.json({ numbers: [] });
-    }
-    res.json({ numbers: result.rows[0].numbers });
+    res.json({ numbers: result.rows.length > 0 ? result.rows[0].numbers : [] });
   } catch (err) {
-    console.error('ERRO NO GET DATA:', err.message);
-    res.status(500).json({ error: 'Erro no banco de dados', details: err.message });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// Rota de saúde para teste rápido
-app.get('/', (req, res) => {
-  res.send('Backend Padrão FIFA está Online!');
-});
+app.get('/', (req, res) => res.send('Backend Padrão FIFA Online'));
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Servidor rodando na porta ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Porta ${PORT}`));
