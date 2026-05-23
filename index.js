@@ -61,6 +61,18 @@ app.get('/data/:user_key', async (req, res) => {
   }
 });
 
+// Rota para limpar os dados do usuário
+app.post('/clear/:user_key', async (req, res) => {
+  const { user_key } = req.params;
+  try {
+    await pool.query('UPDATE roulette_data SET numbers = \'[]\', last_updated = CURRENT_TIMESTAMP WHERE user_key = $1', [user_key]);
+    res.json({ success: true, message: 'Banco de dados limpo com sucesso' });
+  } catch (err) {
+    console.error('Erro ao limpar dados:', err);
+    res.status(500).json({ error: 'Erro ao limpar banco' });
+  }
+});
+
 app.get('/', (req, res) => res.send('Backend Padrão FIFA Online'));
 
 const PORT = process.env.PORT || 3000;
